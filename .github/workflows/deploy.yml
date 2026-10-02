@@ -1,0 +1,53 @@
+name: Deploy Fabric Items via fabric-cicd Python Library
+
+on:
+  push:
+    branches:
+      - main # Tự động chạy khi bạn push lên nhánh main
+
+jobs:
+  fabric-cicd-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Azure Identity & fabric-cicd Package
+        run: |
+          pip install azure-identity fabric-cicd
+
+      - name: Execute fabric-cicd Deployment Script
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TARGET_WORKSPACE_ID: "590c8a2f-180c-4e6e-9743-d2b03c1de664"
+        run: |
+          python -c "
+          import os
+          from azure.identity import ClientSecretCredential
+          from fabric_cicd import FabricWorkspace, publish_all_items
+
+          cred = ClientSecretCredential(
+              tenant_id=os.environ['AZURE_TENANT_ID'],
+              client_id=os.environ['AZURE_CLIENT_ID'],
+              client_secret=os.environ['AZURE_CLIENT_SECRET']
+          )
+
+          target = FabricWorkspace(
+              workspace_id=os.environ['TARGET_WORKSPACE_ID'],
+              environment='TEST',
+              repository_directory='fabric-cicd-practice',
+              item_type_in_scope=['Notebook', 'DataPipeline'],
+              token_credential=cred
+          )
+
+          print('--- Bắt đầu triển khai các item định nghĩa sang FabricCICD-TEST ---')
+          publish_all_items(target)
+          print('--- Triển khai thành công ---')
+          "
