@@ -1,13 +1,12 @@
-
-name: Deploy Fabric Items via Fabric CLI
+name: Deploy Fabric Items via fabric-cicd Python Library
 
 on:
   push:
     branches:
-      - main # Pipeline tự chạy mỗi khi có thay đổi code được đẩy vào nhánh main
+      - main # Chạy tự động khi có code mới đẩy lên nhánh main
 
 jobs:
-  fabric-deployment:
+  fabric-cicd-deployment:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository Code
@@ -18,22 +17,44 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Fabric CLI
+      - name: Install Azure Identity & fabric-cicd Package
         run: |
-          pip install ms-fabric-cli
+          # Cài đặt thư viện xác thực Azure và thư viện fabric-cicd theo tài liệu
+          pip install azure-identity fabric-cicd
 
-      - name: Authenticate and Deploy to TEST
+      - name: Execute fabric-cicd Deployment Script
         env:
-          # Gọi 3 chiếc chìa khóa bí mật từ GitHub Secrets bạn vừa nạp lúc nãy
-          FABRIC_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          FABRIC_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          FABRIC_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          # Gọi 3 chiếc chìa khóa bí mật từ GitHub Secrets
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          # CHÚ Ý: Bạn hãy thay chuỗi GUID giả lập bên dưới bằng Workspace ID thực tế của workspace FabricCICD-TEST
+          TARGET_WORKSPACE_ID: "590c8a2f-180c-4e6e-9743-d2b03c1de664"
         run: |
-          # 1. Đăng nhập tự động bằng định danh Service Principal
-          fab auth login -u "$FABRIC_CLIENT_ID" -p "$FABRIC_CLIENT_SECRET" --tenant "$FABRIC_TENANT_ID"
+          python -c "
+          import os
+          from azure.identity import ClientSecretCredential
+          from fabric_cicd import FabricWorkspace, publish_all_items, unpublish_all_orphan_items
+
+          # 1. Khởi tạo phương thức xác thực tự động bằng Service Principal
+          cred = ClientSecretCredential(
+              tenant_id=os.environ['AZURE_TENANT_ID'],
+              client_id=os.environ['AZURE_CLIENT_ID'],
+              client_secret=os.environ['AZURE_CLIENT_SECRET']
+          )
+
+          # 2. Định nghĩa cấu hình môi trường đích TEST dựa trên tài liệu hướng dẫn
+          target = FabricWorkspace(
+              workspace_id=os.environ['TARGET_WORKSPACE_ID'],
+              environment='TEST',
+              repository_directory='fabric-cicd-practice', # Tên thư mục chứa code trong Repo của bạn
+              item_type_in_scope=['Notebook', 'DataPipeline'], # Chỉ định rõ phạm vi các item cần đồng bộ
+              token_credential=cred
+          )
+
+          print('--- Bắt đầu triển khai các item định nghĩa vào FabricCICD-TEST ---')
+          # 3. Chạy hàm publish toàn bộ cấu trúc item (tự động phát hiện thứ tự phụ thuộc liên kết giữa Notebook và Pipeline)
+          publish_all_items(target)
           
-          # 2. Kiểm tra trạng thái đăng nhập
-          fab auth status
-          
-          # 3. Triển khai cấu trúc sang môi trường TEST, bỏ qua các bước xác nhận thủ công bằng lệnh --force
-          fab deploy --target_env test --force
+          print('--- Triển khai hoàn tất thành công! ---')
+          "
