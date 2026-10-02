@@ -1,1 +1,39 @@
 
+name: Deploy Fabric Items via Fabric CLI
+
+on:
+  push:
+    branches:
+      - main # Pipeline tự chạy mỗi khi có thay đổi code được đẩy vào nhánh main
+
+jobs:
+  fabric-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Fabric CLI
+        run: |
+          pip install ms-fabric-cli
+
+      - name: Authenticate and Deploy to TEST
+        env:
+          # Gọi 3 chiếc chìa khóa bí mật từ GitHub Secrets bạn vừa nạp lúc nãy
+          FABRIC_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          FABRIC_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          FABRIC_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          # 1. Đăng nhập tự động bằng định danh Service Principal
+          fab auth login -u "$FABRIC_CLIENT_ID" -p "$FABRIC_CLIENT_SECRET" --tenant "$FABRIC_TENANT_ID"
+          
+          # 2. Kiểm tra trạng thái đăng nhập
+          fab auth status
+          
+          # 3. Triển khai cấu trúc sang môi trường TEST, bỏ qua các bước xác nhận thủ công bằng lệnh --force
+          fab deploy --target_env test --force
